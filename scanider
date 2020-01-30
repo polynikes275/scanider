@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# Author: Jason B.
+# A quick and easy method for discovering which ports are open because a SYN/ACK response was generated
+# and a method to discover a syn scan
+
+# Checking privs of user
+if (( $UID != 0 ))
+then
+	echo -e "\nUser must be root to run this program.\n"
+	exit 1
+fi
+
+# Usage function
+function usage()
+{
+cat<<EOF
+
+User needs to supply a capture file as input, a log file to store results, and -conn/-syn to determine what type of results you want to save.
+
+Usage: ${0##*/} -f captureFile -l logFile -conn/-syn (scan type)
+
+EOF
+exit
+
+}
+
+# Checking number of command line arguments
+if (( $# == 0 )) || (( $# != 5 ))
+then
+	usage
+fi
+
+# Function for connection attempts/open ports
+function connectionAttempts()
+{
+	echo -e "\nPCAP entered is [ $FILE ] and connection attempt results are logged to file [ $LOG ]\n"
+	sudo tcpdump -nt -r $FILE 'tcp[13] & 0x3f = 0x12' 2>/dev/null | awk -F' ' '{print $2}' |\
+		awk -F'.' '{print "<- ATTEMPTS on PORT -> " $5}' | sort | uniq -c | sort -rn > $LOG	
+}
+
+# Function for detection of a SYN scan
+function synScan()
+{
+	echo -e "\nPCAP entered is [ $FILE ] and syn scan results are logged to file [ $LOG ]\n"
+	sudo tcpdump -nt -r $FILE 'tcp[13] & 0x3f = 0x2' 2>/dev/null | awk -F' ' '{print "<- SCANNING ATTEMPTS FROM -> "$2}' |\
+		awk -F'.' '{print $1"."$2"."$3"."$4}' | sort | uniq -c | sort -rn > $LOG
+}
+
+# While the number of cmd args is greater than 0 perform these actions
+while (( $# > 0 ))
+do
+ARGS="$1"
+	case $ARGS in
+
+		-syn|--synacks)
+			shift
+			shift
+			synScan
+			;;
+
+		-f|--file)
+			FILE="$2"
+			shift
+			shift
+			;;
+
+		-l|--log)
+			LOG="$2"
+			shift
+			shift
+			;;
+
+		-conn|--connections)
+			shift
+			shift
+			connectionAttempts
+			;;
+
+		-h|--help)
+			usage
+			;;
+		*)
+			echo -e "\nUser supplied incorrect flags.\n"
+			exit 1
+			;;
+
+esac
+done
